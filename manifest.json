@@ -1,5 +1,5 @@
 {
-  "name": "輪班戰情室",
+  "name": "輪班班表",
   "short_name": "輪班表",
   "start_url": "./index.html",
   "display": "standalone",
