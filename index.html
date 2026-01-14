@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>輪班戰情室 V3.2</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <meta name="theme-color" content="#ffffff">
+
+    <style>
+        :root {
+            --bg-color: #f2f2f7; --card-bg: #ffffff; --primary: #007aff;
+            --text-main: #1c1c1e; --text-sub: #8e8e93; --border-color: #e5e5ea;
+            --badge-shang: #ff9f0a; --badge-ri: #0a84ff; --badge-xia: #303030; --badge-xiu: #ffffff;
+            --badge-te: #ff2d55; --badge-ot: #34c759;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro TC", "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color); margin: 0; padding: 10px; color: var(--text-main);
+            padding-bottom: 80px; -webkit-font-smoothing: antialiased;
+        }
+
+        /* 控制列 */
+        .controls {
+            background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); padding: 10px 15px;
+            border-radius: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px;
+            position: sticky; top: 10px; z-index: 100;
+        }
+        .controls-row { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+        .view-selector { width: 100%; display: flex; background: #e5e5ea; border-radius: 10px; padding: 2px; }
+        .view-btn {
+            flex: 1; border: none; background: none; padding: 6px 0; font-size: 0.9rem; font-weight: 600;
+            color: #8e8e93; border-radius: 8px; cursor: pointer; transition: all 0.2s;
+        }
+        .view-btn.active { background: white; color: var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+
+        /* 統計區 */
+        .stats-scroller { display: flex; overflow-x: auto; gap: 8px; margin-bottom: 15px; padding-bottom: 5px; scrollbar-width: none; }
+        .stats-scroller::-webkit-scrollbar { display: none; }
+        .stat-card {
+            background: var(--card-bg); flex: 0 0 auto; min-width: 75px; padding: 10px; border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; align-items: center;
+        }
+        .stat-title { font-size: 0.75rem; color: var(--text-sub); margin-bottom: 2px; font-weight: 600; }
+        .stat-number { font-size: 1.3rem; font-weight: 800; color: var(--text-main); }
+        .stat-unit { font-size: 0.7rem; color: #999; font-weight: normal; }
+
+        /* 月曆模式 */
+        .calendar-container { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 20px; }
+        .cal-header { text-align: center; font-size: 0.8rem; color: var(--text-sub); font-weight: bold; padding-bottom: 5px; }
+        .cal-cell {
+            background: white; border-radius: 8px; min-height: 75px; display: flex; flex-direction: column;
+            align-items: center; justify-content: flex-start; padding-top: 5px; position: relative;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05); cursor: pointer; border: 1px solid transparent;
+        }
+        .cal-cell:active { transform: scale(0.95); background: #f0f0f0; }
+        .cal-cell.is-holiday .cal-date { color: #ff3b30; }
+        
+        /* 狀態標示 */
+        .cal-cell.mod-leave { border: 2px solid var(--badge-te); } 
+        .cal-cell.mod-ot { border: 2px solid var(--badge-ot); }    
+
+        /* V3.2 新增：今日高亮樣式 */
+        .cal-cell.is-today {
+            border: 2px solid var(--primary); /* 藍色邊框 */
+            background-color: rgba(0,122,255,0.05); /* 淡藍背景 */
+            box-shadow: 0 0 8px rgba(0,122,255,0.3);
+        }
+        /* 若是今日，日期數字稍微加大 */
+        .cal-cell.is-today .cal-date {
+            color: var(--primary);
+            font-size: 1.1rem;
+        }
+
+        .cal-date { font-size: 0.9rem; font-weight: 700; margin-bottom: 4px; }
+        .cal-holiday-name { font-size: 0.6rem; color: white; background: #ff3b30; padding: 1px 3px; border-radius: 3px; margin-bottom: 2px; max-width: 90%; overflow: hidden; white-space: nowrap;}
+        
+        .shift-block {
+            width: 90%; text-align: center; font-size: 0.9rem; font-weight: bold; padding: 4px 0;
+            border-radius: 4px; color: white; margin-top: auto; margin-bottom: 5px; position: relative;
+        }
+        .sb-上 { background: var(--badge-shang); }
+        .sb-日 { background: var(--badge-ri); }
+        .sb-下 { background: var(--badge-xia); }
+        .sb-休 { background: var(--bg-color); color: #ccc; }
+        
+        .corner-tag {
+            position: absolute; top: -5px; right: -5px; background: red; color: white;
+            font-size: 0.6rem; padding: 2px 4px; border-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+        .tag-leave { background: var(--badge-te); }
+        .tag-ot { background: var(--badge-ot); }
+
+        /* 總覽模式分隔線 */
+        /* V3.2 新增：週分隔線 */
+        .week-divider {
+            border-bottom: 4px double #ccc !important; /* 雙線分隔，更明顯 */
+        }
+
+        /* Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 999; align-items: center; justify-content: center; }
+        .modal-content { background: white; width: 85%; max-width: 340px; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .modal-title { font-size: 1.1rem; font-weight: bold; margin-bottom: 15px; }
+        .input-group { margin-bottom: 20px; text-align: left; }
+        .input-label { font-size: 0.9rem; font-weight: 600; color: #333; margin-bottom: 8px; display: block;}
+        
+        .shift-radios { display: flex; gap: 10px; margin-bottom: 15px; }
+        .shift-radio-label { 
+            flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 8px; text-align: center; cursor: pointer; font-weight: bold; color: #888;
+        }
+        .shift-radio-input { display: none; }
+        .shift-radio-input:checked + .shift-radio-label { 
+            background: var(--primary); color: white; border-color: var(--primary);
+        }
+        .radio-上:checked + label { background: var(--badge-shang); border-color: var(--badge-shang); }
+        .radio-日:checked + label { background: var(--badge-ri); border-color: var(--badge-ri); }
+        .radio-下:checked + label { background: var(--badge-xia); border-color: var(--badge-xia); }
+
+        input[type=range] { width: 100%; margin: 10px 0; }
+        .range-val { font-size: 1.5rem; font-weight: bold; color: var(--primary); text-align: center; display: block;}
+
+        .btn-row { display: flex; gap: 10px; }
+        .btn-modal { flex: 1; padding: 12px; border-radius: 10px; border: none; font-weight: bold; font-size: 1rem; cursor: pointer; }
+        .btn-cancel { background: #f0f0f0; color: #333; }
+        .btn-confirm { background: var(--primary); color: white; }
+        .btn-reset { background: white; border: 1px solid red; color: red; width: 100%; margin-top: 10px; padding: 8px;}
+
+        /* 共用 */
+        select { background: #f2f2f7; border: none; padding: 8px 12px; border-radius: 8px; font-size: 1rem; font-weight: 600; appearance: none; }
+        button.icon-btn { background: var(--primary); color: white; border: none; width: 36px; height: 36px; border-radius: 50%; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .fab-settings { position: fixed; bottom: 20px; right: 20px; background: white; border: 1px solid var(--border-color); color: var(--text-main); padding: 10px 20px; border-radius: 30px; font-weight: 600; box-shadow: 0 4px 15px rgba(0,0,0,0.1); z-index: 200; cursor: pointer; }
+
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <div class="controls-row">
+            <button class="icon-btn" onclick="changeMonth(-1)">‹</button>
+            <div style="display: flex; gap: 5px;">
+                <select id="selYear" onchange="render()"></select>
+                <select id="selMonth" onchange="render()"></select>
+            </div>
+            <button class="icon-btn" onclick="changeMonth(1)">›</button>
+        </div>
+        <div class="view-selector">
+            <button class="view-btn active" onclick="changeView(0)" id="btnView0">總覽</button>
+            <button class="view-btn" onclick="changeView(1)" id="btnView1">1班</button>
+            <button class="view-btn" onclick="changeView(2)" id="btnView2">2班</button>
+            <button class="view-btn" onclick="changeView(3)" id="btnView3">3班</button>
+            <button class="view-btn" onclick="changeView(4)" id="btnView4">4班</button>
+        </div>
+    </div>
+
+    <div class="stats-scroller" id="statsArea" style="display:none;"></div>
+    <div id="scheduleContainer"></div>
+    <button class="fab-settings" onclick="toggleSettingsModal(true)">⚙️ 假日</button>
+
+    <div class="modal" id="actionModal">
+        <div class="modal-content">
+            <div class="modal-title" id="modalTitle">日期設定</div>
+            <div id="modalBody"></div>
+            <div class="btn-row">
+                <button class="btn-modal btn-cancel" onclick="closeActionModal()">取消</button>
+                <button class="btn-modal btn-confirm" onclick="saveModification()">儲存</button>
+            </div>
+            <button class="btn-reset" onclick="clearModification()" id="btnResetMod" style="display:none;">清除設定</button>
+        </div>
+    </div>
+
+    <div class="modal" id="settingsModal">
+        <div class="modal-content" style="max-width: 400px; text-align: left;">
+            <div class="modal-title" style="display:flex; justify-content:space-between;">
+                假日管理 <span onclick="toggleSettingsModal(false)" style="cursor:pointer;">×</span>
+            </div>
+            <div id="holidayList" style="max-height: 50vh; overflow-y: auto; margin-bottom: 15px;"></div>
+            <button class="btn-modal" style="background:#f0f0f0; width:100%; margin-bottom:10px;" onclick="addNewHolidayField()">+ 新增假日</button>
+            <button class="btn-modal btn-confirm" style="width:100%;" onclick="saveHolidays()">儲存</button>
+        </div>
+    </div>
+
+    <script>
+        const SHIFT_PATTERN = ['上','上','上','上','上','上', '休','休','日','日','日','日','日','日', '休','休','下','下','下','下','下','下', '休','休'];
+        const ANCHOR_DATE = new Date(2026, 0, 1); 
+        const CLASS_OFFSETS = { 1: 15, 2: 21, 3: 3, 4: 9 };
+        const WEEK_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
+
+        const DEFAULT_HOLIDAYS = [
+            { name: '元旦', date: '2026-01-01' },
+            { name: '除夕', date: '2026-02-16' },
+            { name: '初一', date: '2026-02-17' },
+            { name: '初二', date: '2026-02-18' },
+            { name: '初三', date: '2026-02-19' },
+            { name: '春節連假', date: '2026-02-20' },
+            { name: '228', date: '2026-02-27' },
+            { name: '兒童節', date: '2026-04-03' },
+            { name: '清明節', date: '2026-04-06' },
+            { name: '勞動節', date: '2026-05-01' },
+            { name: '端午節', date: '2026-06-19' },
+            { name: '中秋節', date: '2026-09-25' },
+            { name: '教師節', date: '2026-09-28' },
+            { name: '國慶日', date: '2026-10-09' },
+            { name: '光復節', date: '2026-10-26' },
+            { name: '行憲紀念日', date: '2026-12-25' }
+        ];
+
+        let userHolidays = JSON.parse(localStorage.getItem('my_holidays_v3_0')) || DEFAULT_HOLIDAYS;
+        let userMods = JSON.parse(localStorage.getItem('my_mods_v3_0')) || {};
+        
+        let currentViewClass = 0; 
+        let selectedDate = null;
+        let selectedOriginalShift = null;
+
+        const today = new Date();
+        let currentYear = today.getFullYear();
+        let currentMonth = today.getDate() > 25 ? today.getMonth() + 2 : today.getMonth() + 1;
+        if(currentMonth > 12) { currentMonth = 1; currentYear++; }
+
+        window.onload = function() {
+            initSelectors();
+            render();
+        };
+
+        // --- 核心邏輯 ---
+        function getShift(classId, dateObj) {
+            const diffTime = dateObj.getTime() - ANCHOR_DATE.getTime();
+            const diffDays = Math.floor(diffTime / (1000 * 3600 * 24));
+            let index = (CLASS_OFFSETS[classId] + diffDays) % 24;
+            if (index < 0) index += 24;
+            return SHIFT_PATTERN[index];
+        }
+
+        function getHolidayName(dateStr) {
+            const found = userHolidays.find(h => h.date === dateStr);
+            return found ? found.name : null;
+        }
+
+        function getShiftStatus(classId, dateStr, originalShift) {
+            const mod = userMods[dateStr] && userMods[dateStr][classId];
+            
+            let res = {
+                displayShift: originalShift,
+                isCounted: (originalShift !== '休'),
+                handover: (originalShift !== '休' ? 0.5 : 0),
+                tag: null, 
+                isLeave: false,
+                isOT: false,
+                otHours: 0
+            };
+
+            if (mod) {
+                if (mod.type === 'leave') {
+                    res.isLeave = true;
+                    res.tag = `休${mod.val}h`;
+                    if (mod.val >= 4) {
+                        res.isCounted = false; 
+                    }
+                    if (mod.val === 8) {
+                        res.displayShift = '休'; 
+                        res.handover = 0;
+                        res.tag = null; 
+                    } else {
+                        res.handover = 0.25; 
+                    }
+                } else if (mod.type === 'ot') {
+                    res.isOT = true;
+                    res.displayShift = mod.shift;
+                    res.tag = `+${mod.val}`;
+                    res.otHours = mod.val;
+                    res.isCounted = false;
+                    res.handover = 0; 
+                }
+            }
+            return res;
+        }
+
+        function render() {
+            const year = parseInt(document.getElementById('selYear').value);
+            const month = parseInt(document.getElementById('selMonth').value);
+            const container = document.getElementById('scheduleContainer');
+            const statsArea = document.getElementById('statsArea');
+            
+            container.innerHTML = '';
+            
+            let startYear = month === 1 ? year - 1 : year;
+            let startMonth = month === 1 ? 12 : month - 1;
+            const startDate = new Date(startYear, startMonth - 1, 26);
+            const endDate = new Date(year, month - 1, 25);
+
+            if (currentViewClass === 0) {
+                statsArea.style.display = 'none';
+                renderListView(container, startDate, endDate);
+            } else {
+                statsArea.style.display = 'flex';
+                const stats = renderCalendarView(container, startDate, endDate, currentViewClass);
+                renderStats(stats);
+            }
+        }
+
+        function renderCalendarView(container, startDate, endDate, classId) {
+            container.className = '';
+            let html = `<div class="calendar-container">`;
+            WEEK_NAMES.forEach(w => html += `<div class="cal-header">${w}</div>`);
+            
+            let curr = new Date(startDate);
+            const startDay = curr.getDay(); 
+            for(let i=0; i<startDay; i++) html += `<div class="cal-cell" style="cursor:default;"></div>`;
+
+            let stats = { '上':0, '日':0, '下':0, '總':0, '交接':0, '加班':0 };
+            
+            // --- V3.2 新增：獲取今日日期字串 ---
+            const todayStr = formatDate(new Date());
+
+            while (curr <= endDate) {
+                const dateStr = formatDate(curr);
+                const d = curr.getDate();
+                const holiday = getHolidayName(dateStr);
+                const day = curr.getDay();
+                
+                let originalShift = getShift(classId, curr);
+                let status = getShiftStatus(classId, dateStr, originalShift);
+                
+                if (status.displayShift !== '休') {
+                    if (status.isOT || status.isCounted) {
+                        stats[status.displayShift]++;
+                    }
+                }
+                if (status.isCounted && !status.isOT) {
+                    stats['總']++;
+                }
+
+                stats['交接'] += status.handover;
+                stats['加班'] += status.otHours;
+
+                let cellClass = 'cal-cell';
+                if (holiday || day===0 || day===6) cellClass += ' is-holiday';
+                if (status.isLeave && status.displayShift !== '休') cellClass += ' mod-leave';
+                if (status.isOT) cellClass += ' mod-ot';
+
+                // --- V3.2 新增：判斷是否為今日 ---
+                if (dateStr === todayStr) {
+                    cellClass += ' is-today';
+                }
+
+                let tagHtml = status.tag ? `<div class="corner-tag ${status.isOT?'tag-ot':'tag-leave'}">${status.tag}</div>` : '';
+                
+                let shiftBlock = `<div class="shift-block sb-${status.displayShift}">${status.displayShift}</div>`;
+                let dateDisplay = `<span class="cal-date">${d}</span>`;
+                if(holiday) dateDisplay += `<div class="cal-holiday-name">${holiday}</div>`;
+
+                html += `<div class="${cellClass}" onclick="openActionModal('${dateStr}', '${originalShift}')">
+                            ${tagHtml}
+                            ${dateDisplay}
+                            ${shiftBlock}
+                         </div>`;
+                curr.setDate(curr.getDate() + 1);
+            }
+            html += `</div>`;
+            container.innerHTML = html;
+            return stats;
+        }
+
+        function renderStats(s) {
+            const area = document.getElementById('statsArea');
+            area.innerHTML = `
+                <div class="stat-card"><div class="stat-title">應上班</div><div class="stat-number" style="color:var(--primary)">${s['總']}</div></div>
+                <div class="stat-card"><div class="stat-title">交接(時)</div><div class="stat-number" style="color:#666">${s['交接']}</div></div>
+                <div class="stat-card"><div class="stat-title">加班(時)</div><div class="stat-number" style="color:var(--badge-ot)">${s['加班']}</div></div>
+                <div class="stat-card"><div class="stat-title">上夜</div><div class="stat-number" style="color:var(--badge-shang)">${s['上']}</div></div>
+                <div class="stat-card"><div class="stat-title">日班</div><div class="stat-number" style="color:var(--badge-ri)">${s['日']}</div></div>
+                <div class="stat-card"><div class="stat-title">下夜</div><div class="stat-number" style="color:var(--badge-xia)">${s['下']}</div></div>
+            `;
+        }
+        
+        function renderListView(container, startDate, endDate) {
+            container.className = 'list-view-container';
+            let html = `<table style="width:100%; border-collapse:collapse; text-align:center;"><thead>
+                <tr style="border-bottom:1px solid #ddd; background:#f9f9f9;"><th style="padding:10px;">日期</th><th>1</th><th>2</th><th>3</th><th>4</th></tr></thead><tbody>`;
+            let curr = new Date(startDate);
+            while (curr <= endDate) {
+                const dateStr = formatDate(curr);
+                const d = curr.getDate();
+                const day = curr.getDay();
+                const holiday = getHolidayName(dateStr);
+                const isWk = (day===0 || day===6);
+                let bg = holiday ? '#fff0f0' : (isWk ? '#fafafa' : 'white');
+                let color = (holiday || isWk) ? '#ff3b30' : '#333';
+                
+                // --- V3.2 新增：週分隔線 (週日底部加粗) ---
+                let rowStyle = `border-bottom:1px solid #eee; background:${bg};`;
+                if (day === 0) { // 週日
+                    rowStyle += `border-bottom: 4px double #ccc;`;
+                }
+
+                html += `<tr style="${rowStyle}">
+                    <td style="padding:8px;">
+                        <div style="font-weight:bold; color:${color}">${curr.getMonth()+1}/${d}</div>
+                        <div style="font-size:0.7rem; color:${color}">${WEEK_NAMES[day]}</div>
+                    </td>`;
+                
+                for(let i=1; i<=4; i++) {
+                    let s = getShift(i, curr);
+                    let st = getShiftStatus(i, dateStr, s);
+                    let badgeColor = `var(--badge-${st.displayShift === '上' ? 'shang' : st.displayShift === '日' ? 'ri' : st.displayShift === '下' ? 'xia' : 'xiu'})`;
+                    let border = st.isOT ? '2px solid var(--badge-ot)' : (st.isLeave && st.displayShift!=='休' ? '2px solid var(--badge-te)' : 'none');
+                    let opacity = (st.displayShift === '休' && !st.isOT) ? 'color:#ccc; border:1px solid #eee;' : 'color:white;';
+                    
+                    html += `<td><div style="width:30px; height:30px; border-radius:50%; background:${badgeColor}; ${opacity} display:flex; align-items:center; justify-content:center; margin:0 auto; font-size:0.9rem; font-weight:bold; border:${border}">${st.displayShift}</div></td>`;
+                }
+                html += `</tr>`;
+                curr.setDate(curr.getDate() + 1);
+            }
+            html += `</tbody></table>`;
+            container.innerHTML = html;
+        }
+
+        // --- Action Modal ---
+        function openActionModal(dateStr, originalShift) {
+            selectedDate = dateStr;
+            selectedOriginalShift = originalShift;
+            const modal = document.getElementById('actionModal');
+            const title = document.getElementById('modalTitle');
+            const body = document.getElementById('modalBody');
+            const btnReset = document.getElementById('btnResetMod');
+
+            title.innerText = `${dateStr} 設定`;
+            const mod = userMods[dateStr] && userMods[dateStr][currentViewClass];
+            if (mod) btnReset.style.display = 'block';
+            else btnReset.style.display = 'none';
+
+            if (originalShift === '休') {
+                let defaultVal = (mod && mod.type === 'ot') ? mod.val : 8;
+                let defaultShift = (mod && mod.type === 'ot') ? mod.shift : '上';
+                body.innerHTML = `
+                    <div class="input-label">選擇加班班別</div>
+                    <div class="shift-radios">
+                        <input type="radio" name="otShift" id="ot_shang" value="上" class="shift-radio-input radio-上" ${defaultShift=='上'?'checked':''}>
+                        <label for="ot_shang" class="shift-radio-label">上夜</label>
+                        <input type="radio" name="otShift" id="ot_ri" value="日" class="shift-radio-input radio-日" ${defaultShift=='日'?'checked':''}>
+                        <label for="ot_ri" class="shift-radio-label">日班</label>
+                        <input type="radio" name="otShift" id="ot_xia" value="下" class="shift-radio-input radio-下" ${defaultShift=='下'?'checked':''}>
+                        <label for="ot_xia" class="shift-radio-label">下夜</label>
+                    </div>
+                    <div class="input-group">
+                        <label class="input-label">加班時數 (小時)</label>
+                        <span id="rangeValDisplay" class="range-val">${defaultVal}</span>
+                        <input type="range" id="modRange" min="0" max="12" step="0.5" value="${defaultVal}" oninput="document.getElementById('rangeValDisplay').innerText = this.value">
+                    </div>`;
+            } else {
+                let defaultVal = (mod && mod.type === 'leave') ? mod.val : 0;
+                body.innerHTML = `
+                    <div class="input-group">
+                        <label class="input-label">請假時數 (0=不請, 8=全休)</label>
+                        <span id="rangeValDisplay" class="range-val" style="color:var(--badge-te)">${defaultVal}</span>
+                        <input type="range" id="modRange" min="0" max="8" step="0.5" value="${defaultVal}" oninput="document.getElementById('rangeValDisplay').innerText = this.value">
+                        <div style="font-size:0.8rem; color:#666; margin-top:5px;">
+                            * 未滿4小時: 照常統計<br>* 4小時以上: 不計入班次<br>* 8小時: 全休
+                        </div>
+                    </div>`;
+            }
+            modal.style.display = 'flex';
+        }
+
+        function saveModification() {
+            const rangeVal = parseFloat(document.getElementById('modRange').value);
+            if (!userMods[selectedDate]) userMods[selectedDate] = {};
+            
+            if (selectedOriginalShift === '休') {
+                if (rangeVal > 0) {
+                    const shift = document.querySelector('input[name="otShift"]:checked').value;
+                    userMods[selectedDate][currentViewClass] = { type: 'ot', val: rangeVal, shift: shift };
+                } else delete userMods[selectedDate][currentViewClass];
+            } else {
+                if (rangeVal > 0) userMods[selectedDate][currentViewClass] = { type: 'leave', val: rangeVal };
+                else delete userMods[selectedDate][currentViewClass];
+            }
+            localStorage.setItem('my_mods_v3_0', JSON.stringify(userMods));
+            closeActionModal();
+            render();
+        }
+
+        function clearModification() {
+            if (userMods[selectedDate]) {
+                delete userMods[selectedDate][currentViewClass];
+                localStorage.setItem('my_mods_v3_0', JSON.stringify(userMods));
+            }
+            closeActionModal();
+            render();
+        }
+
+        function closeActionModal() { document.getElementById('actionModal').style.display = 'none'; }
+        function formatDate(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+        function initSelectors() {
+            const ySel = document.getElementById('selYear');
+            for(let y = currentYear - 2; y <= currentYear + 2; y++) ySel.options.add(new Option(y + '年', y));
+            ySel.value = currentYear;
+            const mSel = document.getElementById('selMonth');
+            for(let m=1; m<=12; m++) mSel.options.add(new Option(m + '月', m));
+            mSel.value = currentMonth;
+        }
+        function changeMonth(delta) {
+            let m = parseInt(document.getElementById('selMonth').value);
+            let y = parseInt(document.getElementById('selYear').value);
+            m += delta;
+            if (m > 12) { m = 1; y++; }
+            if (m < 1) { m = 12; y--; }
+            document.getElementById('selMonth').value = m;
+            document.getElementById('selYear').value = y;
+            render();
+        }
+        function changeView(classId) {
+            currentViewClass = classId;
+            for(let i=0; i<=4; i++) document.getElementById('btnView'+i).classList.toggle('active', i === classId);
+            render();
+        }
+        
+        function toggleSettingsModal(show) { 
+            document.getElementById('settingsModal').style.display = show ? 'flex' : 'none'; 
+            if(show) renderHolidayList();
+        }
+        function renderHolidayList() {
+            const list = document.getElementById('holidayList');
+            list.innerHTML = '';
+            userHolidays.forEach((h, idx) => {
+                list.innerHTML += `<div style="display:flex; gap:5px; margin-bottom:5px;">
+                    <input type="text" value="${h.name}" onchange="userHolidays[${idx}].name=this.value" style="width:80px; padding:5px; border:1px solid #ddd; border-radius:5px;">
+                    <input type="date" value="${h.date}" onchange="userHolidays[${idx}].date=this.value" style="flex:1; padding:5px; border:1px solid #ddd; border-radius:5px;">
+                    <button onclick="deleteHoliday(${idx})" style="color:red; border:none; background:none;">×</button>
+                </div>`;
+            });
+        }
+        function addNewHolidayField() { userHolidays.push({name:'', date:''}); renderHolidayList(); }
+        function deleteHoliday(idx) { userHolidays.splice(idx, 1); renderHolidayList(); }
+        function saveHolidays() {
+            userHolidays = userHolidays.filter(h => h.date);
+            localStorage.setItem('my_holidays_v3_0', JSON.stringify(userHolidays));
+            toggleSettingsModal(false);
+            render();
+        }
+    </script>
+</body>
+</html>
