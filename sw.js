@@ -1,5 +1,5 @@
 // 注意：這裡的版本號名稱跟之前的不同，確保獨立運作
-const CACHE_NAME = 'shift-scheduler-v1';
+const CACHE_NAME = 'shift-scheduler-v4';
 const urlsToCache = [
   './',
   './index.html',
